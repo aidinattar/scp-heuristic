@@ -8,3 +8,5 @@
 - [ ] Add a simple repair step.
 - [ ] Implement local search.
 - [ ] Add a time-limited search loop.
+- [ ] Emit and save any feasible solution as soon as it is found.
+- [ ] Track and save improving intermediate incumbents.
