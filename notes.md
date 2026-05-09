@@ -9,4 +9,4 @@
 - [ ] Implement local search.
 - [ ] Add a time-limited search loop.
 - [ ] Emit and save any feasible solution as soon as it is found.
-- [ ] Track and save improving intermediate incumbents.
+- [x] Track and save improving intermediate incumbents.

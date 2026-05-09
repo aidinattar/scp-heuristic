@@ -26,6 +26,30 @@ class Solution:
         return all(cnt > 0 for cnt in self.cover_count)
 
 
+@dataclass
+class IncumbentTracker:
+    instance_name: str
+    results_dir: Path
+    start_time: float
+    best_cost: int | None = None
+    counter: int = 0
+
+    def update(self, sol: Solution) -> None:
+        if not sol.is_feasible():
+            return
+        if self.best_cost is not None and sol.cost >= self.best_cost:
+            return
+
+        self.best_cost = sol.cost
+        self.counter += 1
+
+        sol.columns.sort()
+        elapsed = time.time() - self.start_time
+
+        print(f"#### Feasible solution of value {sol.cost} [time {elapsed:.3f}]", flush=True)
+        write_solution(self.results_dir / f"{self.instance_name}.{self.counter}.sol", sol)
+
+
 def read_instance(fp: TextIO) -> Instance:
     first = fp.readline().split()
     if len(first) != 2:
@@ -110,6 +134,7 @@ def remove_redundant_columns(sol: Solution, instance: Instance) -> None:
 def greedy_initial_solution(
     instance: Instance,
     rng: random.Random,
+    tracker: IncumbentTracker | None = None,
     rcl_factor: float = 0.08,
 ) -> Solution:
     """
@@ -121,7 +146,6 @@ def greedy_initial_solution(
     """
     sol = make_empty_solution(instance)
     uncovered = set(range(instance.m))
-    # weights = 1 / frequency of the row
     row_weight = [1.0 / len(instance.row_cols[i]) for i in range(instance.m)]
 
     while uncovered:
@@ -142,7 +166,6 @@ def greedy_initial_solution(
             if new_rows == 0:
                 continue
 
-            # tie-break in favor of columns covering more new rows.
             score = gain / instance.costs[j]
             score *= 1.0 + 1e-6 * new_rows
             scores.append((score, j))
@@ -160,7 +183,14 @@ def greedy_initial_solution(
         for i in instance.col_rows[chosen]:
             uncovered.discard(i)
 
+    if tracker is not None:
+        tracker.update(sol)
+
     remove_redundant_columns(sol, instance)
+
+    if tracker is not None:
+        tracker.update(sol)
+
     sol.columns.sort()
     return sol
 
@@ -172,14 +202,13 @@ def write_solution(path: Path, sol: Solution) -> None:
         f.write("\n")
 
 
-def log_solution(sol: Solution, start_time: float) -> None:
-    elapsed = time.time() - start_time
-    print(f"#### Feasible solution of value {sol.cost} [time {elapsed:.3f}]")
-
-
-def build_initial_solution(instance: Instance, seed: int = 0) -> Solution:
+def build_initial_solution(
+    instance: Instance,
+    tracker: IncumbentTracker,
+    seed: int = 0,
+) -> Solution:
     rng = random.Random(seed)
-    sol = greedy_initial_solution(instance, rng=rng)
+    sol = greedy_initial_solution(instance, rng=rng, tracker=tracker)
     if not sol.is_feasible():
         raise RuntimeError("Internal error: greedy produced an infeasible solution")
     return sol
@@ -194,15 +223,20 @@ def main(argv: Sequence[str]) -> int:
     seed = int(argv[2]) if len(argv) >= 3 else 0
 
     start_time = time.time()
-    with instance_path.open("r", encoding="utf-8") as f:
-        instance = read_instance(f)
-
-    sol = build_initial_solution(instance, seed=seed)
-    log_solution(sol, start_time)
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
-    write_solution(results_dir / f"{instance_path.name}.1.sol", sol)
+
+    with instance_path.open("r", encoding="utf-8") as f:
+        instance = read_instance(f)
+
+    tracker = IncumbentTracker(
+        instance_name=instance_path.name,
+        results_dir=results_dir,
+        start_time=start_time,
+    )
+
+    build_initial_solution(instance, tracker=tracker, seed=seed)
     return 0
 
 
