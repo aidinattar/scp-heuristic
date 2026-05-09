@@ -65,6 +65,8 @@ def read_instance(fp: TextIO) -> Instance:
 
     for j in range(n):
         parts = fp.readline().split()
+        if len(parts) < 2:
+            raise ValueError(f"Invalid column line for column {j}")
 
         cost = int(parts[0])
         count = int(parts[1])
@@ -131,14 +133,64 @@ def remove_redundant_columns(sol: Solution, instance: Instance) -> None:
             remove_column(sol, instance, j)
 
 
-def greedy_initial_solution(
+def fast_greedy_solution(
+    instance: Instance,
+    tracker: IncumbentTracker | None = None,
+) -> Solution:
+    """Build a quick first solution using plain uncovered rows per unit cost."""
+    sol = make_empty_solution(instance)
+    uncovered = set(range(instance.m))
+
+    while uncovered:
+        best_col = -1
+        best_score = -1.0
+        best_new_rows = 0
+
+        for j in range(instance.n):
+            if sol.selected[j]:
+                continue
+
+            new_rows = 0
+            for i in instance.col_rows[j]:
+                if sol.cover_count[i] == 0:
+                    new_rows += 1
+
+            if new_rows == 0:
+                continue
+
+            score = new_rows / instance.costs[j]
+            if score > best_score or (score == best_score and new_rows > best_new_rows):
+                best_score = score
+                best_col = j
+                best_new_rows = new_rows
+
+        if best_col < 0:
+            raise RuntimeError("No candidate column found while uncovered rows remain")
+
+        add_column(sol, instance, best_col)
+        for i in instance.col_rows[best_col]:
+            uncovered.discard(i)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    remove_redundant_columns(sol, instance)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    sol.columns.sort()
+    return sol
+
+
+def weighted_greedy_solution(
     instance: Instance,
     rng: random.Random,
     tracker: IncumbentTracker | None = None,
     rcl_factor: float = 0.08,
 ) -> Solution:
     """
-    Construct an initial solution with a weighted greedy rule.
+    Construct a solution with a weighted greedy rule.
 
     Each uncovered row gets weight 1 / frequency(row), so columns covering rare
     rows receive more credit. Among the best-scoring columns we use a small
@@ -202,16 +254,22 @@ def write_solution(path: Path, sol: Solution) -> None:
         f.write("\n")
 
 
-def build_initial_solution(
+def build_initial_solutions(
     instance: Instance,
     tracker: IncumbentTracker,
     seed: int = 0,
 ) -> Solution:
+    fast_sol = fast_greedy_solution(instance, tracker=tracker)
+
     rng = random.Random(seed)
-    sol = greedy_initial_solution(instance, rng=rng, tracker=tracker)
-    if not sol.is_feasible():
+    weighted_sol = weighted_greedy_solution(instance, rng=rng, tracker=tracker)
+
+    if not fast_sol.is_feasible() or not weighted_sol.is_feasible():
         raise RuntimeError("Internal error: greedy produced an infeasible solution")
-    return sol
+
+    if weighted_sol.cost <= fast_sol.cost:
+        return weighted_sol
+    return fast_sol
 
 
 def main(argv: Sequence[str]) -> int:
@@ -236,7 +294,7 @@ def main(argv: Sequence[str]) -> int:
         start_time=start_time,
     )
 
-    build_initial_solution(instance, tracker=tracker, seed=seed)
+    build_initial_solutions(instance, tracker=tracker, seed=seed)
     return 0
 
 
