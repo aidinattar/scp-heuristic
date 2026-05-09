@@ -133,6 +133,21 @@ def remove_redundant_columns(sol: Solution, instance: Instance) -> None:
             remove_column(sol, instance, j)
 
 
+def all_columns_solution(
+    instance: Instance,
+    tracker: IncumbentTracker | None = None,
+) -> Solution:
+    """Return the trivial feasible solution selecting all columns."""
+    sol = make_empty_solution(instance)
+    for j in range(instance.n):
+        add_column(sol, instance, j)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    return sol
+
+
 def fast_greedy_solution(
     instance: Instance,
     tracker: IncumbentTracker | None = None,
@@ -259,17 +274,16 @@ def build_initial_solutions(
     tracker: IncumbentTracker,
     seed: int = 0,
 ) -> Solution:
+    trivial_sol = all_columns_solution(instance, tracker=tracker)
     fast_sol = fast_greedy_solution(instance, tracker=tracker)
 
     rng = random.Random(seed)
     weighted_sol = weighted_greedy_solution(instance, rng=rng, tracker=tracker)
 
-    if not fast_sol.is_feasible() or not weighted_sol.is_feasible():
-        raise RuntimeError("Internal error: greedy produced an infeasible solution")
+    if not trivial_sol.is_feasible() or not fast_sol.is_feasible() or not weighted_sol.is_feasible():
+        raise RuntimeError("Internal error: construction produced an infeasible solution")
 
-    if weighted_sol.cost <= fast_sol.cost:
-        return weighted_sol
-    return fast_sol
+    return min((trivial_sol, fast_sol, weighted_sol), key=lambda sol: sol.cost)
 
 
 def main(argv: Sequence[str]) -> int:

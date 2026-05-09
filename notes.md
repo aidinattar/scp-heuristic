@@ -10,3 +10,5 @@
 - [ ] Add a time-limited search loop.
 - [ ] Emit and save any feasible solution as soon as it is found.
 - [x] Track and save improving intermediate incumbents.
+- [x] Add a simpler greedy heuristic that does not consider the cost of columns, to be used as a baseline.
+- [x] Add a solution with all columns as a baseline.
