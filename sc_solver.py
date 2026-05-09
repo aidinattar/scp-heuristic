@@ -123,6 +123,19 @@ def make_empty_solution(instance: Instance) -> Solution:
     )
 
 
+def copy_solution(sol: Solution) -> Solution:
+    return Solution(
+        selected=sol.selected.copy(),
+        columns=sol.columns.copy(),
+        cost=sol.cost,
+        cover_count=sol.cover_count.copy(),
+    )
+
+
+def get_uncovered_rows(sol: Solution) -> set[int]:
+    return {i for i, cnt in enumerate(sol.cover_count) if cnt == 0}
+
+
 def remove_redundant_columns(sol: Solution, instance: Instance) -> None:
     """Remove redundant columns from the solution."""
     order = sorted(sol.columns, key=lambda j: (instance.costs[j], len(instance.col_rows[j])), reverse=True)
@@ -262,6 +275,84 @@ def weighted_greedy_solution(
     return sol
 
 
+def repair_solution(sol: Solution, instance: Instance, uncovered: set[int]) -> bool:
+    """Repair uncovered rows with a simple greedy rule."""
+    while uncovered:
+        candidate_cols: set[int] = set()
+        for i in uncovered:
+            candidate_cols.update(instance.row_cols[i])
+
+        best_col = -1
+        best_score = -1.0
+        best_new_rows = 0
+
+        for j in candidate_cols:
+            if sol.selected[j]:
+                continue
+
+            new_rows = 0
+            for i in instance.col_rows[j]:
+                if i in uncovered:
+                    new_rows += 1
+
+            if new_rows == 0:
+                continue
+
+            score = new_rows / instance.costs[j]
+            if score > best_score or (score == best_score and new_rows > best_new_rows):
+                best_score = score
+                best_col = j
+                best_new_rows = new_rows
+
+        if best_col < 0:
+            return False
+
+        add_column(sol, instance, best_col)
+        for i in instance.col_rows[best_col]:
+            uncovered.discard(i)
+
+    return True
+
+
+def one_drop_local_search(
+    sol: Solution,
+    instance: Instance,
+    tracker: IncumbentTracker,
+    max_passes: int = 3,
+) -> Solution:
+    """Try to improve a solution by removing one column and repairing."""
+    current = copy_solution(sol)
+
+    for _ in range(max_passes):
+        improved = False
+        order = sorted(current.columns, key=lambda j: instance.costs[j], reverse=True)
+
+        for j in order:
+            if not current.selected[j]:
+                continue
+
+            candidate = copy_solution(current)
+            remove_column(candidate, instance, j)
+
+            uncovered = get_uncovered_rows(candidate)
+            if uncovered and not repair_solution(candidate, instance, uncovered):
+                continue
+
+            remove_redundant_columns(candidate, instance)
+            candidate.columns.sort()
+
+            if candidate.is_feasible() and candidate.cost < current.cost:
+                current = candidate
+                tracker.update(current)
+                improved = True
+                break
+
+        if not improved:
+            break
+
+    return current
+
+
 def write_solution(path: Path, sol: Solution) -> None:
     with path.open("w", encoding="utf-8") as f:
         f.write(f"{sol.cost}\n")
@@ -283,7 +374,8 @@ def build_initial_solutions(
     if not trivial_sol.is_feasible() or not fast_sol.is_feasible() or not weighted_sol.is_feasible():
         raise RuntimeError("Internal error: construction produced an infeasible solution")
 
-    return min((trivial_sol, fast_sol, weighted_sol), key=lambda sol: sol.cost)
+    best = min((trivial_sol, fast_sol, weighted_sol), key=lambda sol: sol.cost)
+    return one_drop_local_search(best, instance, tracker=tracker)
 
 
 def main(argv: Sequence[str]) -> int:
