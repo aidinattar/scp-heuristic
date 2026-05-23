@@ -1,7 +1,7 @@
 import random
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Sequence, TextIO
 
@@ -33,6 +33,28 @@ class IncumbentTracker:
     start_time: float
     best_cost: int | None = None
     counter: int = 0
+    trace_path: Path | None = None
+    trace_file: TextIO | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.trace_path is None:
+            self.trace_path = self.results_dir / f"{self.instance_name}.trace.csv"
+
+        self.trace_file = self.trace_path.open("w", encoding="utf-8")
+        self.trace_file.write("time,cost\n")
+        self.trace_file.flush()
+
+    def close(self) -> None:
+        if self.trace_file is not None:
+            self.trace_file.close()
+            self.trace_file = None
+
+    def log_incumbent(self, elapsed: float, cost: int) -> None:
+        if self.trace_file is None:
+            return
+
+        self.trace_file.write(f"{elapsed:.6f},{cost}\n")
+        self.trace_file.flush()
 
     def update(self, sol: Solution) -> None:
         if not sol.is_feasible():
@@ -48,6 +70,7 @@ class IncumbentTracker:
 
         print(f"#### Feasible solution of value {sol.cost} [time {elapsed:.3f}]", flush=True)
         write_solution(self.results_dir / f"{self.instance_name}.{self.counter}.sol", sol)
+        self.log_incumbent(elapsed, sol.cost)
 
 
 def read_instance(fp: TextIO) -> Instance:
@@ -400,7 +423,10 @@ def main(argv: Sequence[str]) -> int:
         start_time=start_time,
     )
 
-    build_initial_solutions(instance, tracker=tracker, seed=seed)
+    try:
+        build_initial_solutions(instance, tracker=tracker, seed=seed)
+    finally:
+        tracker.close()
     return 0
 
 
