@@ -431,6 +431,69 @@ def row_based_greedy_solution(
     return sol
 
 
+def randomized_row_based_greedy_solution(
+    instance: Instance,
+    rng: random.Random,
+    tracker: IncumbentTracker | None = None,
+    row_rcl_size: int = 20,
+    col_rcl_factor: float = 0.10,
+) -> Solution:
+    """Build a solution by selecting hard uncovered rows and randomized good columns."""
+    sol = make_empty_solution(instance)
+    uncovered = set(range(instance.m))
+
+    while uncovered:
+        # Pick one among the hardest uncovered rows.
+        # Hard = few columns can cover it.
+        hard_rows = sorted(uncovered, key=lambda i: len(instance.row_cols[i]))[:row_rcl_size]
+        row = rng.choice(hard_rows)
+
+        scored_cols: list[tuple[float, int, int]] = []
+        best_score = -1.0
+
+        for j in instance.row_cols[row]:
+            if sol.selected[j]:
+                continue
+
+            new_rows = 0
+            for i in instance.col_rows[j]:
+                if i in uncovered:
+                    new_rows += 1
+
+            if new_rows == 0:
+                continue
+
+            score = new_rows / instance.costs[j]
+            scored_cols.append((score, new_rows, j))
+
+            if score > best_score:
+                best_score = score
+
+        if not scored_cols:
+            raise RuntimeError("No candidate column found while uncovered rows remain")
+
+        # Restricted candidate list: not always the best, but close to the best.
+        threshold = best_score * (1.0 - col_rcl_factor)
+        rcl = [(score, new_rows, j) for score, new_rows, j in scored_cols if score >= threshold]
+
+        _, _, chosen = rng.choice(rcl)
+        add_column(sol, instance, chosen)
+
+        for i in instance.col_rows[chosen]:
+            uncovered.discard(i)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    remove_redundant_columns(sol, instance)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    sol.columns.sort()
+    return sol
+
+
 def write_solution(path: Path, sol: Solution) -> None:
     with path.open("w", encoding="utf-8") as f:
         f.write(f"{sol.cost}\n")
@@ -442,19 +505,30 @@ def build_initial_solutions(
     instance: Instance,
     tracker: IncumbentTracker,
     seed: int = 0,
+    n_restarts: int = 10,
 ) -> Solution:
-    trivial_sol = all_columns_solution(instance, tracker=tracker)
-    row_sol = row_based_greedy_solution(instance, tracker=tracker)
+    rng = random.Random(seed)
 
-    candidates = [trivial_sol, row_sol]
+    trivial_sol = all_columns_solution(instance, tracker=tracker)
+    candidates = [trivial_sol]
+
+    for _ in range(n_restarts):
+        sol = randomized_row_based_greedy_solution(
+            instance,
+            rng=rng,
+            tracker=tracker,
+            row_rcl_size=20,
+            col_rcl_factor=0.10,
+        )
+        candidates.append(sol)
 
     for sol in candidates:
         if not sol.is_feasible():
             raise RuntimeError("Internal error: construction produced an infeasible solution")
 
     best = min(candidates, key=lambda sol: sol.cost)
-    return one_drop_local_search(best, instance, tracker=tracker)
-
+    best = one_drop_local_search(best, instance, tracker=tracker, max_passes=3)
+    return best
 
 def main(argv: Sequence[str]) -> int:
     if len(argv) < 2:
