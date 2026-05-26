@@ -25,6 +25,7 @@ from utils.sc_solver import (
 	remove_redundant_columns,
 	write_solution,
 	weighted_greedy_solution,
+	build_initial_solutions,
 )
 from utils.solution_checker import checker, readInstance as checker_readInstance
 
@@ -74,19 +75,6 @@ def greedy_repair_solution(sol: Solution, instance: Instance, uncovered: set[int
 	return True
 
 
-def build_initial_solution(instance: Instance, tracker: IncumbentTracker, rng: random.Random) -> Solution:
-	trivial_sol = all_columns_solution(instance, tracker=tracker)
-	fast_sol = fast_greedy_solution(instance, tracker=tracker)
-
-	weighted_sol = weighted_greedy_solution(instance, rng=rng, tracker=tracker)
-
-	best = min((trivial_sol, fast_sol, weighted_sol), key=lambda sol: sol.cost)
-	initial = one_drop_local_search(best, instance, tracker=tracker)
-	remove_redundant_columns(initial, instance)
-	initial.columns.sort()
-	return initial
-
-
 def perturb_solution(sol: Solution, instance: Instance, rng: random.Random) -> Solution | None:
 	candidate = copy_solution(sol)
 	if not candidate.columns:
@@ -126,7 +114,7 @@ def iterated_local_search_sa(
 	rng = random.Random(seed)
 	deadline = time.time() + time_limit
 
-	current = build_initial_solution(instance, tracker, rng)
+	current = build_initial_solutions(instance, tracker, seed)
 	best = copy_solution(current)
 	temperature = max(1.0, float(best.cost) * 0.1)
 	cooling = 0.995

@@ -376,6 +376,61 @@ def one_drop_local_search(
     return current
 
 
+def row_based_greedy_solution(
+    instance: Instance,
+    tracker: IncumbentTracker | None = None,
+) -> Solution:
+    """Build a quick solution by selecting columns from uncovered critical rows."""
+    sol = make_empty_solution(instance)
+    uncovered = set(range(instance.m))
+
+    while uncovered:
+        # Pick a difficult uncovered row: few available covering columns.
+        row = min(uncovered, key=lambda i: len(instance.row_cols[i]))
+
+        best_col = -1
+        best_score = -1.0
+        best_new_rows = 0
+
+        for j in instance.row_cols[row]:
+            if sol.selected[j]:
+                continue
+
+            new_rows = 0
+            for i in instance.col_rows[j]:
+                if i in uncovered:
+                    new_rows += 1
+
+            if new_rows == 0:
+                continue
+
+            score = new_rows / instance.costs[j]
+
+            if score > best_score or (score == best_score and new_rows > best_new_rows):
+                best_score = score
+                best_col = j
+                best_new_rows = new_rows
+
+        if best_col < 0:
+            raise RuntimeError("No candidate column found while uncovered rows remain")
+
+        add_column(sol, instance, best_col)
+
+        for i in instance.col_rows[best_col]:
+            uncovered.discard(i)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    remove_redundant_columns(sol, instance)
+
+    if tracker is not None:
+        tracker.update(sol)
+
+    sol.columns.sort()
+    return sol
+
+
 def write_solution(path: Path, sol: Solution) -> None:
     with path.open("w", encoding="utf-8") as f:
         f.write(f"{sol.cost}\n")
@@ -389,15 +444,15 @@ def build_initial_solutions(
     seed: int = 0,
 ) -> Solution:
     trivial_sol = all_columns_solution(instance, tracker=tracker)
-    fast_sol = fast_greedy_solution(instance, tracker=tracker)
+    row_sol = row_based_greedy_solution(instance, tracker=tracker)
 
-    rng = random.Random(seed)
-    weighted_sol = weighted_greedy_solution(instance, rng=rng, tracker=tracker)
+    candidates = [trivial_sol, row_sol]
 
-    if not trivial_sol.is_feasible() or not fast_sol.is_feasible() or not weighted_sol.is_feasible():
-        raise RuntimeError("Internal error: construction produced an infeasible solution")
+    for sol in candidates:
+        if not sol.is_feasible():
+            raise RuntimeError("Internal error: construction produced an infeasible solution")
 
-    best = min((trivial_sol, fast_sol, weighted_sol), key=lambda sol: sol.cost)
+    best = min(candidates, key=lambda sol: sol.cost)
     return one_drop_local_search(best, instance, tracker=tracker)
 
 
