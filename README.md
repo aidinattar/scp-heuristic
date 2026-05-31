@@ -1,25 +1,17 @@
-# Set Covering Heuristic
+# Set Covering Solver — Minimal
 
-Python heuristic for the Set Covering Problem on OR-Library rail instances.
+Files:
+- `sc_solver.py` (main solver) and `sc_solver` (launcher)
 
-## Structure
-
-- `sc_solver.py` main solver
-- `solution_checker.py` solution checker
-- `ILS.py` iterated local search solver
-- `primal_integral.py` primal integral calculator from the incumbent trace
-- `instances/` input instances
-- `results/` logs and solutions
-- `notes.md` short development notes
-
-## Primal Integral
-
-Both solvers now write an incumbent trace at `results/<instance>.trace.csv`.
-
-Run the solver as usual, then compute the primal integral with:
-
+Run:
 ```bash
-uv run utils/primal_integral.py results/rail507.trace.csv <best_known> 600
+./sc_solver INSTANCE SEED TIME_LIMIT > log.txt 2>&1
+# example: ./sc_solver instances/rail507 0 600 > rail507.log 2>&1
 ```
 
-Replace `<best_known>` with the best known objective value for the instance.
+Output:
+- Prints each new best as: `#### Feasible solution of value xxx [time yyy]`
+- Writes `results/INSTANCE.k.sol` and `results/INSTANCE.trace.csv`
+
+Seed (short):
+- `SEED` is an integer that controls randomness. Use the same seed to reproduce a run; change the seed to get a different randomized run. Default is `0` when omitted.
