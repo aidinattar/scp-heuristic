@@ -5,8 +5,9 @@ Files:
 
 Run:
 ```bash
-./sc_solver INSTANCE SEED TIME_LIMIT > log.txt 2>&1
+./sc_solver INSTANCE [SEED] [TIME_LIMIT] > log.txt 2>&1
 # example: ./sc_solver instances/rail507 0 600 > rail507.log 2>&1
+# SEED and TIME_LIMIT are optional; defaults: SEED=0, TIME_LIMIT=600
 ```
 
 Output:
