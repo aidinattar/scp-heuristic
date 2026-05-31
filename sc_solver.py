@@ -41,24 +41,16 @@ class IncumbentTracker:
     trace_file: TextIO | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.trace_path is None:
-            self.trace_path = self.results_dir / f"{self.instance_name}.trace.csv"
-
-        self.trace_file = self.trace_path.open("w", encoding="utf-8")
-        self.trace_file.write("time,cost\n")
-        self.trace_file.flush()
+        # Do not create a trace CSV. We only persist solution files.
+        self.trace_file = None
 
     def close(self) -> None:
-        if self.trace_file is not None:
-            self.trace_file.close()
-            self.trace_file = None
+        # No trace file to close (CSV logging disabled).
+        self.trace_file = None
 
     def log_incumbent(self, elapsed: float, cost: int) -> None:
-        if self.trace_file is None:
-            return
-
-        self.trace_file.write(f"{elapsed:.6f},{cost}\n")
-        self.trace_file.flush()
+        # CSV logging disabled; do nothing.
+        return
 
     def update(self, sol: Solution) -> None:
         if not sol.is_feasible():
