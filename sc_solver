@@ -29,7 +29,6 @@ class Solution:
     def is_feasible(self) -> bool:
         return all(cnt > 0 for cnt in self.cover_count)
 
-
 @dataclass
 class IncumbentTracker:
     instance_name: str
@@ -37,19 +36,8 @@ class IncumbentTracker:
     start_time: float
     best_cost: int | None = None
     counter: int = 0
-    trace_path: Path | None = None
-    trace_file: TextIO | None = field(default=None, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        # Do not create a trace CSV. We only persist solution files.
-        self.trace_file = None
 
     def close(self) -> None:
-        # No trace file to close (CSV logging disabled).
-        self.trace_file = None
-
-    def log_incumbent(self, elapsed: float, cost: int) -> None:
-        # CSV logging disabled; do nothing.
         return
 
     def update(self, sol: Solution) -> None:
@@ -66,7 +54,6 @@ class IncumbentTracker:
 
         print(f"#### Feasible solution of value {sol.cost} [time {elapsed:.3f}]", flush=True)
         write_solution(self.results_dir / f"{self.instance_name}.{self.counter}.sol", sol)
-        self.log_incumbent(elapsed, sol.cost)
 
 
 def read_instance(fp: TextIO) -> Instance:
@@ -180,120 +167,6 @@ def all_columns_solution(
     return sol
 
 
-def fast_greedy_solution(
-    instance: Instance,
-    tracker: IncumbentTracker | None = None,
-) -> Solution:
-    """Build a quick first solution using plain uncovered rows per unit cost."""
-    sol = make_empty_solution(instance)
-    uncovered = set(range(instance.m))
-
-    while uncovered:
-        best_col = -1
-        best_score = -1.0
-        best_new_rows = 0
-
-        for j in range(instance.n):
-            if sol.selected[j]:
-                continue
-
-            new_rows = 0
-            for i in instance.col_rows[j]:
-                if sol.cover_count[i] == 0:
-                    new_rows += 1
-
-            if new_rows == 0:
-                continue
-
-            score = new_rows / instance.costs[j]
-            if score > best_score or (score == best_score and new_rows > best_new_rows):
-                best_score = score
-                best_col = j
-                best_new_rows = new_rows
-
-        if best_col < 0:
-            raise RuntimeError("No candidate column found while uncovered rows remain")
-
-        add_column(sol, instance, best_col)
-        for i in instance.col_rows[best_col]:
-            uncovered.discard(i)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    remove_redundant_columns(sol, instance)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    sol.columns.sort()
-    return sol
-
-
-def weighted_greedy_solution(
-    instance: Instance,
-    rng: random.Random,
-    tracker: IncumbentTracker | None = None,
-    rcl_factor: float = 0.08,
-) -> Solution:
-    """
-    Construct a solution with a weighted greedy rule.
-
-    Each uncovered row gets weight 1 / frequency(row), so columns covering rare
-    rows receive more credit. Among the best-scoring columns we use a small
-    restricted candidate list to avoid being fully deterministic.
-    """
-    sol = make_empty_solution(instance)
-    uncovered = set(range(instance.m))
-    row_weight = [1.0 / len(instance.row_cols[i]) for i in range(instance.m)]
-
-    while uncovered:
-        scores: List[tuple[float, int]] = []
-        best_score = -1.0
-
-        for j in range(instance.n):
-            if sol.selected[j]:
-                continue
-
-            gain = 0.0
-            new_rows = 0
-            for i in instance.col_rows[j]:
-                if sol.cover_count[i] == 0:
-                    gain += row_weight[i]
-                    new_rows += 1
-
-            if new_rows == 0:
-                continue
-
-            score = gain / instance.costs[j]
-            score *= 1.0 + 1e-6 * new_rows
-            scores.append((score, j))
-            if score > best_score:
-                best_score = score
-
-        if not scores:
-            raise RuntimeError("No candidate column found while uncovered rows remain")
-
-        threshold = best_score * (1.0 - rcl_factor)
-        rcl = [j for score, j in scores if score >= threshold]
-        chosen = rng.choice(rcl)
-        add_column(sol, instance, chosen)
-
-        for i in instance.col_rows[chosen]:
-            uncovered.discard(i)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    remove_redundant_columns(sol, instance)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    sol.columns.sort()
-    return sol
-
-
 def repair_solution(sol: Solution, instance: Instance, uncovered: set[int]) -> bool:
     """Repair uncovered rows with a simple greedy rule."""
     while uncovered:
@@ -370,60 +243,6 @@ def one_drop_local_search(
             break
 
     return current
-
-
-def row_based_greedy_solution(
-    instance: Instance,
-    tracker: IncumbentTracker | None = None,
-) -> Solution:
-    """Build a quick solution by selecting columns from uncovered critical rows."""
-    sol = make_empty_solution(instance)
-    uncovered = set(range(instance.m))
-
-    while uncovered:
-        row = min(uncovered, key=lambda i: len(instance.row_cols[i]))
-
-        best_col = -1
-        best_score = -1.0
-        best_new_rows = 0
-
-        for j in instance.row_cols[row]:
-            if sol.selected[j]:
-                continue
-
-            new_rows = 0
-            for i in instance.col_rows[j]:
-                if i in uncovered:
-                    new_rows += 1
-
-            if new_rows == 0:
-                continue
-
-            score = new_rows / instance.costs[j]
-
-            if score > best_score or (score == best_score and new_rows > best_new_rows):
-                best_score = score
-                best_col = j
-                best_new_rows = new_rows
-
-        if best_col < 0:
-            raise RuntimeError("No candidate column found while uncovered rows remain")
-
-        add_column(sol, instance, best_col)
-
-        for i in instance.col_rows[best_col]:
-            uncovered.discard(i)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    remove_redundant_columns(sol, instance)
-
-    if tracker is not None:
-        tracker.update(sol)
-
-    sol.columns.sort()
-    return sol
 
 
 def randomized_row_based_greedy_solution(
@@ -732,10 +551,7 @@ def main(argv: Sequence[str]) -> int:
     seed = int(argv[2]) if len(argv) >= 3 else 0
     time_limit = float(argv[3]) if len(argv) >= 4 else 600.0
 
-    start_wall_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     start_time = time.monotonic()
-
-    print(f"Start time: {start_wall_time}", flush=True)
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
@@ -755,10 +571,6 @@ def main(argv: Sequence[str]) -> int:
         validate_solution(instance, best)
     finally:
         tracker.close()
-        end_wall_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        total_elapsed = time.monotonic() - start_time
-        print(f"End time: {end_wall_time}", flush=True)
-        print(f"Total elapsed: {total_elapsed:.3f} seconds", flush=True)
     return 0
 
 

@@ -1,18 +1,9 @@
-# Set Covering Solver — Minimal
+# SCP Heuristic
 
-Files:
-- `sc_solver.py` (main solver) and `sc_solver` (launcher)
+Randomized greedy heuristic with Iterated Local Search and Simulated Annealing for the Set Covering Problem.
 
-Run:
+Run with:
+
 ```bash
-./sc_solver INSTANCE [SEED] [TIME_LIMIT] > log.txt 2>&1
-# example: ./sc_solver instances/rail507 0 600 > rail507.log 2>&1
-# SEED and TIME_LIMIT are optional; defaults: SEED=0, TIME_LIMIT=600
+./sc_solver path_to_instance [seed] [time_limit]
 ```
-
-Output:
-- Prints each new best as: `#### Feasible solution of value xxx [time yyy]`
-- Writes `results/INSTANCE.k.sol` and `results/INSTANCE.trace.csv`
-
-Seed (short):
-- `SEED` is an integer that controls randomness. Use the same seed to reproduce a run; change the seed to get a different randomized run. Default is `0` when omitted.
